@@ -1,0 +1,68 @@
+import cv2
+import numpy as np
+
+cap = cv2.VideoCapture('sport_video.mp4')
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    exit()
+
+ret, prev_frame = cap.read()
+if not ret:
+    print("Error: Could not read video frame.")
+    cap.release()
+    exit()
+
+prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+prev_pos = None
+fps = cap.get(cv2.CAP_PROP_FPS)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    diff = cv2.absdiff(gray, prev_gray)
+    _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+
+    kernel = np.ones((5, 5), np.uint8)
+    thresh = cv2.dilate(thresh, kernel, iterations=2)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    speed = 0
+    curr_pos = None
+
+    for contour in contours:
+        if cv2.contourArea(contour) < 100: 
+            continue
+
+        M = cv2.moments(contour)
+        if M["m00"] != 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            curr_pos = (cx, cy)
+
+            x, y, w, h = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.circle(frame, curr_pos, 5, (0, 0, 255), -1)
+
+            if prev_pos is not None:
+                distance = np.sqrt((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)
+                speed = distance * fps  
+
+            break  
+
+    cv2.putText(frame, f"Speed: {speed:.2f} px/s", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+    cv2.imshow('Tracking', frame)
+
+    prev_gray = gray.copy()
+    prev_pos = curr_pos
+
+    if cv2.waitKey(30) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
